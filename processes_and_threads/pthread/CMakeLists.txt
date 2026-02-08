@@ -1,0 +1,2 @@
+add_executable(pthread_intro pthread_intro.cpp)
+target_link_libraries(pthread_intro PRIVATE Threads::Threads)
