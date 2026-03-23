@@ -1,61 +1,66 @@
 #pragma once
 
-#include <condition_variable>
-#include <mutex>
 #include <optional>
-#include <queue>
+#include <deque>
+#include <mutex>
+#include <condition_variable>
 #include <stdexcept>
 
 template <class T>
 class BufferedChannel {
 public:
-    explicit BufferedChannel(int size) : capacity(size) {
+    explicit BufferedChannel(int size)
+        : capacity_(size) {
     }
 
     void Send(const T& value) {
-        std::unique_lock lock{mtx};
+        std::unique_lock<std::mutex> lock(mutex_);
 
-        not_full.wait(lock, [this] {
-            return queue.size() < static_cast<size_t>(capacity) || closed;
-        });
+        not_full_.wait(lock, [this]() {
+            return closed_ || queue_.size() < capacity_;
+            });
 
-        if (closed) {
-            throw std::runtime_error("Channel is closed");
+        if (closed_) {
+            throw std::runtime_error("send to closed channel");
         }
-        
-        queue.push(value);
-        not_empty.notify_one();
+
+        queue_.push_back(value);
+        not_empty_.notify_one();
     }
 
     std::optional<T> Recv() {
-        std::unique_lock lock{mtx};
+        std::unique_lock<std::mutex> lock(mutex_);
 
-        not_empty.wait(lock, [this] {
-            return !queue.empty() || closed;
-        });
+        not_empty_.wait(lock, [this]() {
+            return closed_ || !queue_.empty();
+            });
 
-        if (queue.empty()) {
+        if (queue_.empty()) {
             return std::nullopt;
         }
-        
-        T value = std::move(queue.front());
-        queue.pop();
-        not_full.notify_one();
+
+        T value = std::move(queue_.front());
+        queue_.pop_front();
+        not_full_.notify_one();
         return value;
     }
 
     void Close() {
-        std::unique_lock lock{mtx};
-        closed = true;
-        not_full.notify_all();
-        not_empty.notify_all();
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (closed_) {
+            return;
+        }
+        closed_ = true;
+        not_full_.notify_all();
+        not_empty_.notify_all();
     }
 
 private:
-    int capacity;
-    bool closed{false};
-    std::mutex mtx;
-    std::queue<T> queue;
-    std::condition_variable not_full;
-    std::condition_variable not_empty;
+    std::size_t capacity_;
+    std::deque<T> queue_;
+    bool closed_ = false;
+
+    std::mutex mutex_;
+    std::condition_variable not_full_;
+    std::condition_variable not_empty_;
 };
