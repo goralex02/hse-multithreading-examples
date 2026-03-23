@@ -13,8 +13,11 @@ g++ -std=c++17 main.cpp -o dfs_boost -lboost_context -lboost_coroutine
 Граф 
 
 0 -> 1, 2
+
 1 -> 3, 4
+
 2 -> 5
+
 4 -> 6
 
 ## Тестирование
